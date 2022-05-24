@@ -7,6 +7,7 @@ import dolfin.common.plotting as fenicsplot
 from matplotlib import pyplot as plt
 from os import mkdir, path
 from shutil import rmtree
+from itertools import zip_longest
 
 def simulate(des, rpm, res):
 
@@ -68,16 +69,24 @@ def simulate(des, rpm, res):
     
     #mesh = generate_mesh(Circle(Point(xc,yc), rc_domain, 2*c_res) - Circle(Point(xc,yc), rc, c_res), res) 
     mesh = generate_mesh(Circle(Point(xc,yc), rc_domain, 4*c_res) - obj, res) 
-    h_unrefined = mesh.hmin()
+    domain_mesh = generate_mesh(Circle(Point(xc,yc), rc_domain, 4*c_res), res)
+    domain_h_unref = domain_mesh.hmin()
+    obj_mesh = generate_mesh(Circle(Point(xc,yc), rc + domain_h_unref, c_res) - obj, 1)
+    
     plt.figure()
     plot(mesh, linewidth=0.5)
     plt.savefig(res_dir + '/mesh.png', dpi=300)
+    #plt.figure()
+    #plot(generate_mesh(Circle(Point(xc,yc), rc + domain_h_unref, c_res) - obj, 1), linewidth=0.5)
+    #plt.savefig(res_dir + '/mesh2.png', dpi=300)
+    #plt.figure()
+    #plot(generate_mesh(Circle(Point(xc,yc), rc_domain, 4*c_res), res), linewidth=0.5)
+    #plt.savefig(res_dir + '/mesh3.png', dpi=300)
 
     rc_refine = 1/3 * rc_domain
-
     # Local mesh refinement (specified by a cell marker)
     no_levels = 1
-    for i in range(0,no_levels):
+    for _ in range(0,no_levels):
         cell_marker = MeshFunction("bool", mesh, mesh.topology().dim())
         for cell in cells(mesh):
             cell_marker[cell] = False
@@ -86,6 +95,88 @@ def simulate(des, rpm, res):
             #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
                 cell_marker[cell] = True
         mesh = refine(mesh, cell_marker)
+    # Local mesh refinement (specified by a cell marker)
+    for _ in range(0,no_levels):
+        cell_marker = MeshFunction("bool", domain_mesh, domain_mesh.topology().dim())
+        for cell in cells(domain_mesh):
+            cell_marker[cell] = False
+            p = cell.midpoint()
+            if p.distance(Point(xc, yc)) < rc_refine:
+            #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
+                cell_marker[cell] = True
+        domain_mesh = refine(domain_mesh, cell_marker)
+
+    # Local mesh refinement (specified by a cell marker)
+    for _ in range(0,no_levels):
+        cell_marker = MeshFunction("bool", obj_mesh, obj_mesh.topology().dim())
+        for cell in cells(obj_mesh):
+            cell_marker[cell] = False
+            p = cell.midpoint()
+            if p.distance(Point(xc, yc)) < rc_refine:
+            #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
+                cell_marker[cell] = True
+        obj_mesh = refine(obj_mesh, cell_marker)
+    
+    """
+    ref_meshes = [mesh, domain_mesh, obj_mesh]
+
+    for cell_list, mesh_t in zip([cells(mesh), cells(domain_mesh), cells(obj_mesh)], ref_meshes):
+        # Local mesh refinement (specified by a cell marker)
+        no_levels = 1
+        for _ in range(0,no_levels):
+            cell_marker = MeshFunction("bool", mesh_t, mesh_t.topology().dim())
+            for cell in cell_list:
+                cell_marker[cell] = False
+                p = cell.midpoint()
+                if p.distance(Point(xc, yc)) < rc_refine:
+                #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
+                    cell_marker[cell] = True
+            mesh_t = refine(mesh_t, cell_marker)
+            plt.figure()
+            plot(mesh_t, linewidth=0.5)
+            plt.savefig(res_dir + '/mesh' + repr(mesh_t) + '.png', dpi=300)
+            print(res_dir + '/mesh' + repr(mesh_t) + '.png')
+
+    mesh, domain_mesh, obj_mesh = ref_meshes
+    plt.figure()
+    plot(domain_mesh, linewidth=0.5)
+    plt.savefig(res_dir + '/mesh2.png', dpi=300)
+    plt.figure()
+    plot(obj_mesh, linewidth=0.5)
+    plt.savefig(res_dir + '/mesh3.png', dpi=300)
+
+    # Local mesh refinement (specified by a cell marker)
+    no_levels = 1
+    for _ in range(0,no_levels):
+        cell_marker = MeshFunction("bool", mesh, mesh.topology().dim())
+        cell_marker_d = MeshFunction("bool", domain_mesh, domain_mesh.topology().dim())
+        cell_marker_o = MeshFunction("bool", obj_mesh, obj_mesh.topology().dim())
+        for cell, cell_d, cell_o in zip_longest(cells(mesh), cells(domain_mesh), cells(obj_mesh)):
+            cell_marker[cell], cell_marker_d[cell_d], cell_marker_o[cell_o] = False, False, False
+            p = cell.midpoint() 
+            p_d = cell_d.midpoint()
+            p_o = cell_o.midpoint()
+            if p.distance(Point(xc, yc)) < rc_refine:
+            #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
+                cell_marker[cell] = True
+            if p_d.distance(Point(xc, yc)) < rc_refine:
+                cell_marker_d[cell_d] = True
+            if p_o.distance(Point(xc, yc)) < rc_refine:
+                cell_marker_o[cell_o] = True
+        mesh = refine(mesh, cell_marker)
+        domain_mesh = refine(domain_mesh, cell_marker_d)
+        obj_mesh = refine(obj_mesh, cell_marker_o)
+    """
+    plt.figure()
+    plot(domain_mesh, linewidth=0.5)
+    plt.savefig(res_dir + '/mesh2.png', dpi=300)
+    plt.figure()
+    plot(obj_mesh, linewidth=0.5)
+    plt.savefig(res_dir + '/mesh3.png', dpi=300)
+    obj_hmin = obj_mesh.hmin()
+    domain_hmin = domain_mesh.hmin()
+    print("Hmins:", domain_h_unref, domain_hmin, obj_hmin)
+
 
     # Define mesh functions (for boundary conditions)
     boundaries = MeshFunction("size_t", mesh, mesh.topology().dim()-1)
@@ -158,10 +249,11 @@ def simulate(des, rpm, res):
     print("Rotational velocity on rotor:", rot_vel_rc)
     rot_vel_d = rc_domain * rpm * 2 * np.pi / 60 # Velocity at the boundary of the domain
     rot_vel_ref = rc_refine * rpm * 2 * np.pi / 60 # Velocity at the outer edge of the refined mesh
+    rot_vel_obj = (rc + domain_h_unref) * rpm * 2 * np.pi / 60 # Velocity at the object boundary of the refined mesh
     print("Rotational velocity on domain boundary:", rot_vel_d)
 
     #dt = mesh.hmin() / (rot_vel_d + uin) # Should be the magnitude of w and u0 (last time step)
-    dt = min(h_unrefined / (rot_vel_d + uin), mesh.hmin() / (rot_vel_ref + uin)) # Smallest time-step depending on velocity compared to mesh size
+    dt = min(domain_h_unref / (rot_vel_d + uin), domain_hmin / (rot_vel_ref + uin), obj_hmin / (rot_vel_obj + uin)) # Smallest time-step depending on velocity compared to mesh size
     omega = -(rpm * 2 * np.pi * dt) / 60 #-pi/16.0
     o0 = cos(omega)
     o1 = sin(omega)
@@ -346,10 +438,10 @@ def simulate(des, rpm, res):
             plt.savefig(res_dir + "/u" + repr(t) + ".png", dpi=300)
             plt.close()
                 
-            plt.figure()
-            plot(psi)
-            plt.savefig(res_dir + '/userexpr_' + repr(t) + '.png', dpi=300)
-            plt.close()
+            #plt.figure()
+            #plot(psi)
+            #plt.savefig(res_dir + '/userexpr_' + repr(t) + '.png', dpi=300)
+            #plt.close()
             """
             plt.figure()
             plot(p1, title="Pressure")
