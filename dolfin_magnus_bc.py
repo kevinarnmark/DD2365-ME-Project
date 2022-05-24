@@ -10,45 +10,65 @@ from matplotlib import pyplot as plt
 from os import mkdir, path
 from shutil import rmtree
 
-def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
-  ###
+def simulate(nu, res, vis_mesh=False, vis_force=False):
+  ###mkdir('results_ME')
   # Define domain and mesh
   ###
 
   # Define rectangular domain 
-  # Define circular domain 
-  xc = 0.0
-  yc = 0.0
-  rc_domain = 60.0
+  L = 4
+  H = 2
 
-  # Define inner object circle
-  rc = 2.0
+  # Define circle
+  xc = 1.0
+  yc = 0.5*H
+  rc = 0.2
 
   # Parameters
-  rpm = 0
+  inflow_vel = 1.0
+  rpm = 40
 
   # Define subdomains (for boundary conditions)
   class Left(SubDomain):
       def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) > rc and x[0] <= xc
+          return near(x[0], 0.0) 
 
   class Right(SubDomain):
       def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) > rc and x[0] > xc
+          return near(x[0], L)
+
+  class Lower(SubDomain):
+      def inside(self, x, on_boundary):
+          return near(x[1], 0.0)
+
+  class Upper(SubDomain):
+      def inside(self, x, on_boundary):
+          return near(x[1], H)
 
   class Objects(SubDomain):
-      def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) < rc_domain
+    def inside(self, x, on_boundary):
+        return on_boundary and (not near(x[0], 0.0)) and (not near(x[0], L)) and (not near(x[1], 0.0)) and (not near(x[1], H))
         
   left = Left()
   right = Right()
+  lower = Lower()
+  upper = Upper()
   objects = Objects()
 
   # Generate mesh (examples with and without a hole in the mesh) 
-  c_res = 32
+  resolution = res
+  rec = Rectangle(Point(0.0,0.0), Point(L,H))
+  circle = Circle(Point(xc,yc),rc, resolution)
+  domain = rec - circle
+  domain.set_subdomain(1,circle)
   #mesh = RectangleMesh(Point(0.0, 0.0), Point(L, H), L*resolution, H*resolution)
-  #mesh = generate_mesh(Rectangle(Point(0.0,0.0), Point(L,H)) - Circle(Point(xc,yc),rc), resolution)
-  mesh = generate_mesh(Circle(Point(xc,yc), rc_domain, 2*c_res) - Circle(Point(xc,yc), rc, c_res), res)
+  mesh = generate_mesh(domain, resolution)
+
+  # create mesh function using domains already defined
+  mf = MeshFunction("size_t", mesh, mesh.geometric_dimension(), mesh.domains())
+  mf.set_all(0)
+  objects.mark(mf, 1)
+
 
   # Local mesh refinement (specified by a cell marker)
   no_levels = 0
@@ -66,18 +86,44 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   boundaries.set_all(0)
   left.mark(boundaries, 1)
   right.mark(boundaries, 2)
-  #lower.mark(boundaries, 3)
-  #upper.mark(boundaries, 4)
-  objects.mark(boundaries, 3)
+  lower.mark(boundaries, 3)
+  upper.mark(boundaries, 4)
+  objects.mark(boundaries, 5)
+
+
+  # Define mesh functions (for force integration)
+  obj_boundary = MeshFunction("bool", mesh, 0)
+  obj_boundary.set_all(False)
+  objects.mark(obj_boundary, True)
+
+  coord_map = []
+  idx_map = []
+
+  for v in vertices(mesh):
+    if obj_boundary[v]:
+      coord_map.append((v.point()[0], v.point()[1]))
+      idx_map.append(v.index())
+
+  #print('coord_map: ', coord_map)
+  #print(idx_map)
+  #ss_coord_array = mesh.coordinates()[idx_map]
+  #print('coord_array: ', ss_coord_array)
+
+
 
   # Calculating the Reynolds Number and printing information about the simulation
-  re = (uin*rc*2)/nu
+  re = (inflow_vel*rc*2)/nu
   print("Reynolds Number = ", re, "Mesh Resolution = 1/" + repr(res))
 
   if (vis_mesh):
     plt.figure()
     plot(mesh)
-    plt.savefig(res_dir + '/mesh.png', dpi=300)
+    plt.savefig(res_dir + '/mesh.png')
+
+
+  ###
+  # Define finite element approximation spaces
+  ###
 
   # Generate finite element spaces (for velocity and pressure)
   V = VectorFunctionSpace(mesh, "Lagrange", 1)
@@ -90,19 +136,32 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   q = TestFunction(Q)
 
 
-  # Define boundary conditions 
+  ###
+  # Define boundary conditions
+  ###
+
+  class DirichletBoundaryLower(SubDomain):
+      def inside(self, x, on_boundary):
+          return on_boundary and near(x[1], 0.0)
+
+  class DirichletBoundaryUpper(SubDomain):
+      def inside(self, x, on_boundary):
+          return on_boundary and near(x[1], H)
+
   class DirichletBoundaryLeft(SubDomain):
       def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) > rc and x[0] <= xc
+          return on_boundary and near(x[0], 0.0) 
 
   class DirichletBoundaryRight(SubDomain):
       def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) > rc and x[0] > xc
+          return on_boundary and near(x[0], L)
 
   class DirichletBoundaryObjects(SubDomain):
       def inside(self, x, on_boundary):
-          return on_boundary and pow(x[0],2) + pow(x[1],2) < rc_domain
+          return on_boundary and (not near(x[0], 0.0)) and (not near(x[0], L)) and (not near(x[1], 0.0)) and (not near(x[1], H))
 
+  dbc_lower = DirichletBoundaryLower()
+  dbc_upper = DirichletBoundaryUpper()
   dbc_left = DirichletBoundaryLeft()
   dbc_right = DirichletBoundaryRight()
   dbc_objects = DirichletBoundaryObjects()
@@ -110,19 +169,21 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   # Examples of time dependent and stationary inflow conditions
   #uin = Expression('4.0*x[1]*(1-x[1])', element = V.sub(0).ufl_element())
   #uin = Expression('1.0 + 1.0*fabs(sin(t))', element = V.sub(0).ufl_element(), t=0.0)
-  #uin = 10.0
+  uin = inflow_vel
   bcu_in0 = DirichletBC(V.sub(0), uin, dbc_left)
   bcu_in1 = DirichletBC(V.sub(1), 0.0, dbc_left)
+  bcu_upp0 = DirichletBC(V.sub(0), 0.0, dbc_upper)
+  bcu_upp1 = DirichletBC(V.sub(1), 0.0, dbc_upper)
+  bcu_low0 = DirichletBC(V.sub(0), 0.0, dbc_lower)
+  bcu_low1 = DirichletBC(V.sub(1), 0.0, dbc_lower)
 
   # Time step length 
-  mag = 8.0
-  dt = mesh.hmin()/(uin + mag)
+  dt = 0.5*mesh.hmin() 
 
-  # Angular velocity
-  omega = -np.pi/4.0 #-(rpm * 2 * np.pi) / 60 #-(rpm * 2 * np.pi * dt) / 60
-  print("Omega:", omega)
-  o0 = cos(omega)
-  o1 = sin(omega)
+  omega = -np.pi/4.0 #-(rpm * 2 * np.pi * dt) / 60 
+  o0 = cos(omega) #cos(-np.pi/4.0)
+  o1 = sin(omega) #sin(-np.pi/4.0)
+  mag = 0.0
 
   bc_exp0 = Expression('((xc + (x[0]-xc)*o0 - (x[1]-yc)*o1) - x[0])*mag', xc=xc, yc=yc, o0=o0, o1=o1, mag=mag, element = V.sub(0).ufl_element())
   bc_exp1 = Expression('((yc + (x[0]-xc)*o1 + (x[1]-yc)*o0) - x[1])*mag', xc=xc, yc=yc, o0=o0, o1=o1, mag=mag, element = V.sub(1).ufl_element())
@@ -130,16 +191,17 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   bcu_obj0 = DirichletBC(V.sub(0), bc_exp0, dbc_objects)
   bcu_obj1 = DirichletBC(V.sub(1), bc_exp1, dbc_objects)
 
+  pin = Expression('5.0*fabs(sin(t))', element = Q.ufl_element(), t=0.0)
   pout = 0.0
   #bcp0 = DirichletBC(Q, pin, dbc_left) 
   bcp1 = DirichletBC(Q, pout, dbc_right)
 
   #bcu = [bcu_in0, bcu_in1, bcu_upp0, bcu_upp1, bcu_low0, bcu_low1, bcu_obj0, bcu_obj1]
-  bcu = [bcu_in0, bcu_in1, bcu_obj0, bcu_obj1]
+  bcu = [bcu_in0, bcu_in1, bcu_upp1, bcu_low1, bcu_obj0, bcu_obj1]
   bcp = [bcp1]
 
   # Define measure for boundary integration  
-  ds = Measure('ds', domain=mesh, subdomain_data=boundaries)
+  ds = Measure('dS', domain=mesh, subdomain_data=boundaries)
 
 
   ###
@@ -157,8 +219,6 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   # Set parameters for nonlinear and lienar solvers 
   num_nnlin_iter = 5 
   prec = "amg" if has_krylov_solver_preconditioner("amg") else "default" 
-
-
 
 
   ###
@@ -195,9 +255,40 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   phi_x = 0.0
   phi_y = 1.0
 
+  class PsiExpression(UserExpression):
+    def __init__(self, phi_x, phi_y, coord_map, **kwargs):
+      super().__init__(**kwargs)
+      self.phi_x = phi_x
+      self.phi_y = phi_y
+      self.coord_map = coord_map
+
+    def eval(self, values, x):
+        i = 0
+        for v in self.coord_map:
+          if (near(x[0], v[0]) and near(x[1], v[1])):
+            values[0] = self.phi_x
+            values[1] = self.phi_y
+            return
+          i += 1
+        values[0] = 0.0
+        values[1] = 0.0
+
+    def value_shape(self):
+        return (2,)
+
   #psi_expression = Expression(("0.0","pow(x[0]-0.5,2.0) + pow(x[1]-1.0,2.0) - pow(0.2,2.0) < 1.e-5 ? 1. : 0."), element = V.ufl_element())
-  psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+  #psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+  Expression(phi_x, phi_y, coord_map, element=V.ufl_element())
+  psi_expression = PsiExpression(phi_x, phi_y, coord_map, element=V.ufl_element())
+  
+  #test = project(psi_expression, V)
+  #plot(mesh)
+
+
   psi = interpolate(psi_expression, V)
+  plt.figure()
+  plot(psi)
+  plt.savefig(res_dir + '/userexpr' + '.png', dpi=300)
 
   Force = inner((u1 - u0)/dt + grad(um1)*um1, psi)*dx - p1*div(psi)*dx + nu*inner(grad(um1), grad(psi))*dx
 
@@ -205,7 +296,9 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   phi_y = 0.0
 
   #psi_expression = Expression(("0.0","pow(x[0]-0.5,2.0) + pow(x[1]-1.0,2.0) - pow(0.2,2.0) < 1.e-5 ? 1. : 0."), element = V.ufl_element())
-  psi_expression_2 = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+  #psi_expression_2 = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+  psi_expression_2 = PsiExpression(phi_x, phi_y, coord_map, element=V.ufl_element())
+  
   psi_2 = interpolate(psi_expression_2, V)
 
   Force_2 = inner((u1 - u0)/dt + grad(um1)*um1, psi_2)*dx - p1*div(psi_2)*dx + nu*inner(grad(um1), grad(psi_2))*dx
@@ -312,11 +405,11 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
   # Plot solution
   plt.figure()
   plot(u1, title="Velocity, " + s + ", Re = " + repr(re))
-  plt.savefig(res_dir + "/u" + repr(int(t)) + '.png', dpi=300)
+  plt.savefig(res_dir + '/u' + repr(int(t)) + '.png', dpi=300)
 
   plt.figure()
   plot(p1, title="Pressure, " + s + ", Re = " + repr(re))
-  plt.savefig(res_dir + "/p" + repr(int(t)) + '.png', dpi=300)
+  plt.savefig(res_dir + '/p' + repr(int(t)) + '.png', dpi=300)
 
   plot_time += T/plot_freq
           
@@ -331,7 +424,7 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
     lift_avg = np.array([sum(force_array) / len(force_array)]*len(time))
     plt.plot(time, lift_avg, color='red', label='avg = ' + "{:.3f}".format(lift_avg[0]))
     plt.legend()
-    plt.savefig(res_dir + "/lift_force" + repr(int(t)) + '.png', dpi=300)
+    plt.savefig(res_dir + '/lift_force' + repr(int(t)) + '.png', dpi=300)
 
     # Plot the drag force
     plt.figure()
@@ -342,7 +435,7 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
     drag_avg = np.array([sum(force_array_2[int(len(force_array_2) * (T-5)/T):]) / len(force_array_2[int(len(force_array_2) * (T-5)/T):])]*len(time))
     plt.plot(time, drag_avg, color='red', label='avg = ' + "{:.3f}".format(drag_avg[0])) 
     plt.legend()
-    plt.savefig(res_dir + "/drag_force" + repr(int(t)) + '.png', dpi=300)
+    plt.savefig(res_dir + '/drag_force' + repr(int(t)) + '.png', dpi=300)
 
   # Compute frequency when lift force is oscillating around 0
   # This is can also be used inside the time stepping loop to provide 
@@ -371,11 +464,14 @@ def simulate(nu, res, res_dir, uin=1.0, vis_mesh=False, vis_force=False):
       print("Frequency of lift force oscillation: ", freq, " Hz")
       print("Strauhaul Number: ", (freq*2*rc)/uin, "\n")
 
-res_dir = 'results_BC_round_0'
+  #!tar -czvf results_ME.tar.gz results_ME
+  #files.download('results_ME.tar.gz')
+
+res_dir = 'results_ME_1'
 if (path.isdir(res_dir)):
   rmtree(res_dir)
   mkdir(res_dir)
 else:
   mkdir(res_dir)
 
-simulate(1.426e-5, 64, res_dir, uin=10.0, vis_mesh=True, vis_force=True)
+simulate(4e-3, 32, True, True)

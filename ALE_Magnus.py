@@ -29,6 +29,7 @@ def simulate(des, rpm, res):
     elif des == 2:
         # Define rectangle object
         rc = 2.0/sqrt(2)
+        obj = Rectangle(Point(-rc/2,-2*rc), Point(rc/2,2*rc))
     elif des == 3:
         # Define rectangle object
         rc = 2.0/sqrt(2)
@@ -38,6 +39,8 @@ def simulate(des, rpm, res):
     nu = 1.426e-5
 
     re = (uin*rc*2)/nu
+
+    print("RE =", repr(re))
 
     res_dir = "results_ALE_" + repr(des) + "_" + repr(rpm)
     if (path.isdir(res_dir)):
@@ -90,6 +93,19 @@ def simulate(des, rpm, res):
     left.mark(boundaries, 1)
     right.mark(boundaries, 2)
     objects.mark(boundaries, 5)
+
+    # Define mesh function (for weight function psi)
+    obj_boundary = MeshFunction("bool", mesh, 0)
+    obj_boundary.set_all(False)
+    objects.mark(obj_boundary, True)
+
+    coord_map = {} # For the expression for psi to set 
+
+    for v in vertices(mesh):
+        if obj_boundary[v]:
+            coord_map[(v.point()[0], v.point()[1])] = True
+            #coord_map.append((v.point()[0], v.point()[1]))
+    print(coord_map)
 
     plt.figure()
     plot(mesh, linewidth=0.5)
@@ -183,24 +199,48 @@ def simulate(des, rpm, res):
     ap = lhs(Fp)
     Lp = rhs(Fp)
 
+    class PsiExpression(UserExpression):
+        def __init__(self, phi_x, phi_y, coord_map, **kwargs):
+            super().__init__(**kwargs)
+            self.phi_x = phi_x
+            self.phi_y = phi_y
+            self.coord_map = coord_map
+
+        def eval(self, values, x):
+            if (x[0],x[1]) in coord_map:
+                values[0] = self.phi_x
+                values[1] = self.phi_y
+            else:    
+                values[0] = 0.0
+                values[1] = 0.0
+
+        """
+        def eval(self, values, x):
+            i = 0
+            for v in self.coord_map:
+                if (near(x[0], v[0]) and near(x[1], v[1])):
+                    values[0] = self.phi_x
+                    values[1] = self.phi_y
+                    return
+                i += 1
+            values[0] = 0.0
+            values[1] = 0.0
+        """
+
+        def value_shape(self):
+            return (2,)
+
     # Define the direction of the force to be computed 
     phi_x = 0.0
     phi_y = 1.0
-
-    #psi_expression = Expression(("0.0","pow(x[0]-0.5,2.0) + pow(x[1]-1.0,2.0) - pow(0.2,2.0) < 1.e-5 ? 1. : 0."), element = V.ufl_element())
     
-    psi_expression = Expression(("0.0","0.0"), element = V.ufl_element())
-
-    #psi expression for circle:
-    if des == 0:
-        psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
-    elif des == 1:
-        # Psi expression for square
-        psi_expression = Expression(("(near(abs(x[0]), abs(rc)) && near(abs(x[1]), abs(rc))) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
-    
-    psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+    #psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
+    psi_expression = PsiExpression(phi_x, phi_y, coord_map, element=V.ufl_element())
     psi = interpolate(psi_expression, V)
-    #psi = DirichletBC(V.sub(0), phi_x, dbc_objects)
+
+    plt.figure()
+    plot(psi)
+    plt.savefig(res_dir + '/userexpr' + '.png', dpi=300)
 
     Force = inner((u1 - u0)/dt + grad(um1)*um1, psi)*dx - p1*div(psi)*dx + nu*inner(grad(um1), grad(psi))*dx
 
@@ -230,7 +270,9 @@ def simulate(des, rpm, res):
     # Set plot frequency
     frame_rate = 2
     plot_time = 0
+    plot_time_fig = 0
     plot_freq = T*frame_rate
+    plot_freq_fig = T*0.5
 
     start_time = TIME.time()
 
@@ -246,8 +288,8 @@ def simulate(des, rpm, res):
         bcu_in0 = DirichletBC(V.sub(0), uin, dbc_left)
         bcu_in1 = DirichletBC(V.sub(1), 0.0, dbc_left)
 
-        bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
-        bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
+        #bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
+        #bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
 
         pout = 0.0
         bcp1 = DirichletBC(Q, pout, dbc_right)
@@ -294,11 +336,19 @@ def simulate(des, rpm, res):
             file_u << u1
             file_p << p1
 
+            plot_time += T/plot_freq
+
+        if t > plot_time_fig:     
             
             # Plot solution
             plt.figure()
             plot(u1, title="Velocity")
             plt.savefig(res_dir + "/u" + repr(t) + ".png", dpi=300)
+            plt.close()
+                
+            plt.figure()
+            plot(psi)
+            plt.savefig(res_dir + '/userexpr_' + repr(t) + '.png', dpi=300)
             plt.close()
             """
             plt.figure()
@@ -315,8 +365,7 @@ def simulate(des, rpm, res):
             plt.savefig(res_dir + "/force"  + repr(t) + ".png", dpi=300)
             """
 
-            plot_time += T/plot_freq
-
+            plot_time_fig += T/plot_freq_fig
 
 
         # Update time step
