@@ -7,7 +7,6 @@ import dolfin.common.plotting as fenicsplot
 from matplotlib import pyplot as plt
 from os import mkdir, path
 from shutil import rmtree
-from itertools import zip_longest
 
 def simulate(des, rpm, res):
 
@@ -21,19 +20,20 @@ def simulate(des, rpm, res):
 
     if des == 0:
         # Define inner object circle
-        rc = 2.0
         obj = Circle(Point(xc,yc), rc, c_res)
     elif des == 1:
         # Define rectangle object
-        rc = 2.0/sqrt(2)
-        obj = Rectangle(Point(-rc,-rc), Point(rc,rc))
+        rc_coord = rc / sqrt(2)
+        obj = Rectangle(Point(-rc_coord,-rc_coord), Point(rc_coord,rc_coord))
     elif des == 2:
         # Define rectangle object
-        rc = 2.0/sqrt(2)
-        obj = Rectangle(Point(-rc/2,-2*rc), Point(rc/2,2*rc))
+        rc_coord = rc / sqrt(2)
+        #obj = Rectangle(Point(-rc_coord/2,-2*rc_coord), Point(rc_coord/2,2*rc_coord))
+        obj = Circle(Point(xc,yc), rc, c_res) + Rectangle(Point(-rc_coord/4,-2*rc_coord), Point(rc_coord/4,2*rc_coord)) \
+                + Rectangle(Point(-2*rc_coord,-rc_coord/4), Point(2*rc_coord,rc_coord/4))
     elif des == 3:
-        # Define rectangle object
-        rc = 2.0/sqrt(2)
+        # Define object
+        rc = 2.0
 
     # Parameters
     uin = 10.0
@@ -43,7 +43,7 @@ def simulate(des, rpm, res):
 
     print("RE =", repr(re))
 
-    res_dir = "results_ALE_" + repr(des) + "_" + repr(rpm)
+    res_dir = "results_ALE_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
     if (path.isdir(res_dir)):
         rmtree(res_dir)
         mkdir(res_dir)
@@ -167,6 +167,8 @@ def simulate(des, rpm, res):
         domain_mesh = refine(domain_mesh, cell_marker_d)
         obj_mesh = refine(obj_mesh, cell_marker_o)
     """
+    np.save(res_dir + "/num_cells_" + str(mesh.num_cells()) + ".npy", np.array([mesh.num_cells()]))
+
     plt.figure()
     plot(domain_mesh, linewidth=0.5)
     plt.savefig(res_dir + '/mesh2.png', dpi=300)
@@ -196,7 +198,7 @@ def simulate(des, rpm, res):
         if obj_boundary[v]:
             coord_map[(v.point()[0], v.point()[1])] = True
             #coord_map.append((v.point()[0], v.point()[1]))
-    print(coord_map)
+    #print(coord_map)
 
     plt.figure()
     plot(mesh, linewidth=0.5)
@@ -211,6 +213,29 @@ def simulate(des, rpm, res):
     p = TrialFunction(Q)
     v = TestFunction(V)
     q = TestFunction(Q)
+    
+    # Define mesh deformation w, mesh velocity = w/dt
+    t = 0.0
+    
+    rot_vel_rc = rc * rpm * 2 * np.pi / 60
+    print("Rotational velocity on rotor:", rot_vel_rc)
+    rot_vel_d = rc_domain * rpm * 2 * np.pi / 60 # Velocity at the boundary of the domain
+    rot_vel_ref = rc_refine * rpm * 2 * np.pi / 60 # Velocity at the outer edge of the refined mesh
+    rot_vel_obj = (rc + domain_h_unref) * rpm * 2 * np.pi / 60 # Velocity at the object boundary of the refined mesh
+    print("Rotational velocity on domain boundary:", rot_vel_d)
+
+    #dt = mesh.hmin() / (rot_vel_d + uin) # Should be the magnitude of w and u0 (last time step)
+    dt =  min(domain_h_unref / (rot_vel_d + uin), domain_hmin / (rot_vel_ref + uin), obj_hmin / (rot_vel_obj + uin)) # Smallest time-step depending on velocity compared to mesh size
+    omega = -(rpm * 2 * np.pi * dt) / 60 #-pi/16.0
+    o0 = cos(omega)
+    o1 = sin(omega)
+    #rot_vel = (rc * omega) / dt
+    print("Debug Values", omega, o0, o1, rot_vel_rc)
+    print("Debug Rotations:", (omega * (30/dt)) / (2*pi))
+   
+    w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
+    w_bc = Expression(('(x[0]*o0-x[1]*o1 - x[0]) / dt','(x[0]*o1+x[1]*o0 - x[1]) / dt'), rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
+
 
     dbc_left = Left()
     dbc_right = Right()
@@ -220,15 +245,16 @@ def simulate(des, rpm, res):
     bcu_in0 = DirichletBC(V.sub(0), uin, dbc_left)
     bcu_in1 = DirichletBC(V.sub(1), 0.0, dbc_left)
 
-    slip0 = Expression('0.0', element = V.sub(0).ufl_element())
-
-    bcu_obj0 = DirichletBC(V.sub(0), 0.0 if des==0 else slip0, dbc_objects)
+    bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
     bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
+
+    bcu_obj = DirichletBC(V, w_bc, dbc_objects)
 
     pout = 0.0
     bcp1 = DirichletBC(Q, pout, dbc_right)
 
-    bcu = [bcu_in0, bcu_in1, bcu_obj0, bcu_obj1]
+    #bcu = [bcu_in0, bcu_in1, bcu_obj0, bcu_obj1]
+    bcu = [bcu_in0, bcu_in1, bcu_obj]
     bcp = [bcp1]
 
     # Define measure for boundary integration  
@@ -241,27 +267,6 @@ def simulate(des, rpm, res):
     u1 = Function(V)
     p0 = Function(Q)
     p1 = Function(Q)
-
-    # Define mesh deformation w, mesh velocity = w/dt
-    t = 0.0
-    
-    rot_vel_rc = rc * rpm * 2 * np.pi / 60
-    print("Rotational velocity on rotor:", rot_vel_rc)
-    rot_vel_d = rc_domain * rpm * 2 * np.pi / 60 # Velocity at the boundary of the domain
-    rot_vel_ref = rc_refine * rpm * 2 * np.pi / 60 # Velocity at the outer edge of the refined mesh
-    rot_vel_obj = (rc + domain_h_unref) * rpm * 2 * np.pi / 60 # Velocity at the object boundary of the refined mesh
-    print("Rotational velocity on domain boundary:", rot_vel_d)
-
-    #dt = mesh.hmin() / (rot_vel_d + uin) # Should be the magnitude of w and u0 (last time step)
-    dt = min(domain_h_unref / (rot_vel_d + uin), domain_hmin / (rot_vel_ref + uin), obj_hmin / (rot_vel_obj + uin)) # Smallest time-step depending on velocity compared to mesh size
-    omega = -(rpm * 2 * np.pi * dt) / 60 #-pi/16.0
-    o0 = cos(omega)
-    o1 = sin(omega)
-    #rot_vel = (rc * omega) / dt
-    print("Debug Values", omega, o0, o1, rot_vel_rc)
-    print("Debug Rotations:", (omega * (30/dt)) / (2*pi))
-   
-    w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
 
     # Set parameters for nonlinear and lienar solvers 
     num_nnlin_iter = 5 
@@ -306,50 +311,44 @@ def simulate(des, rpm, res):
                 values[0] = 0.0
                 values[1] = 0.0
 
-        """
-        def eval(self, values, x):
-            i = 0
-            for v in self.coord_map:
-                if (near(x[0], v[0]) and near(x[1], v[1])):
-                    values[0] = self.phi_x
-                    values[1] = self.phi_y
-                    return
-                i += 1
-            values[0] = 0.0
-            values[1] = 0.0
-        """
-
         def value_shape(self):
             return (2,)
 
-    # Define the direction of the force to be computed 
-    phi_x = 0.0
-    phi_y = 1.0
     
     #psi_expression = Expression(("near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_x : 0.","near(pow(x[0]-xc,2.0) + pow(x[1]-yc,2.0) - pow(rc,2.0), 0.0) ? phi_y : 0."), xc=xc, yc=yc, rc=rc, phi_x=phi_x, phi_y=phi_y, element = V.ufl_element())
-    psi_expression = PsiExpression(phi_x, phi_y, coord_map, element=V.ufl_element())
-    psi = interpolate(psi_expression, V)
+    psi_l_expression = PsiExpression(0.0, 1.0, coord_map, element=V.ufl_element())
+    psi_d_expression = PsiExpression(1.0, 0.0, coord_map, element=V.ufl_element())
+    psi_l = interpolate(psi_l_expression, V)
+    psi_d = interpolate(psi_d_expression, V)
 
     plt.figure()
-    plot(psi)
-    plt.savefig(res_dir + '/userexpr' + '.png', dpi=300)
+    plot(psi_l)
+    plt.savefig(res_dir + '/psi_expression' + '.png', dpi=300)
 
-    Force = inner((u1 - u0)/dt + grad(um1)*um1, psi)*dx - p1*div(psi)*dx + nu*inner(grad(um1), grad(psi))*dx
+    Force_l = inner((u1 - u0)/dt + grad(um1)*um1, psi_l)*dx - p1*div(psi_l)*dx + nu*inner(grad(um1), grad(psi_l))*dx
+    Force_d = inner((u1 - u0)/dt + grad(um1)*um1, psi_d)*dx - p1*div(psi_d)*dx + nu*inner(grad(um1), grad(psi_d))*dx
 
     #plt.figure()
     #plot(psi, title="weight function psi")
 
     # Force normalization
     D = 2*rc
-    normalization = -2.0/D
+    #normalization = -2.0/D
+    normalization = -2.0/(uin**2 * D * 1.2466) # Air at 10 degrees celsius is 1.2466kg/m**3
 
     # Open files to export solution to Paraview
     file_u = File(res_dir + "/u.pvd")
     file_p = File(res_dir + "/p.pvd")
 
     # Force computation data 
-    force_array = np.array(0.0)
-    force_array = np.delete(force_array, 0)
+    lift_coeff_array = np.array(0.0)
+    lift_coeff_array = np.delete(lift_coeff_array, 0)
+    force_l_array = np.array(0.0)
+    force_l_array = np.delete(force_l_array, 0)
+    drag_coeff_array = np.array(0.0)
+    drag_coeff_array = np.delete(drag_coeff_array, 0)
+    force_d_array = np.array(0.0)
+    force_d_array = np.delete(force_d_array, 0)
     time = np.array(0.0)
     time = np.delete(time, 0)
     start_sample_time = 1.0
@@ -380,13 +379,16 @@ def simulate(des, rpm, res):
         bcu_in0 = DirichletBC(V.sub(0), uin, dbc_left)
         bcu_in1 = DirichletBC(V.sub(1), 0.0, dbc_left)
 
+        bcu_obj = DirichletBC(V, w_bc, dbc_objects)
+
         #bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
         #bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
 
         pout = 0.0
         bcp1 = DirichletBC(Q, pout, dbc_right)
 
-        bcu = [bcu_in0, bcu_in1, bcu_obj0, bcu_obj1]
+        #bcu = [bcu_in0, bcu_in1, bcu_obj0, bcu_obj1]
+        bcu = [bcu_in0, bcu_in1, bcu_obj]
         bcp = [bcp1]
         
         # Solve non-linear problem 
@@ -412,9 +414,13 @@ def simulate(des, rpm, res):
             solve(Ap, p1.vector(), bp, "bicgstab", prec)
 
             # Compute force
-            F = assemble(Force)
+            F_l = assemble(Force_l)
+            F_d = assemble(Force_d)
             if (t > start_sample_time):
-                force_array = np.append(force_array, normalization*F)
+                lift_coeff_array = np.append(lift_coeff_array, normalization*F_l)
+                force_l_array = np.append(force_l_array, F_l)
+                drag_coeff_array = np.append(drag_coeff_array, normalization*F_d)
+                force_d_array = np.append(force_d_array, F_d)
                 time = np.append(time, t)
 
             k += 1
@@ -453,7 +459,7 @@ def simulate(des, rpm, res):
 
             plt.figure()
             plt.title("Force")
-            plt.plot(time, force_array)
+            plt.plot(time, lift_coeff_array)
             plt.savefig(res_dir + "/force"  + repr(t) + ".png", dpi=300)
             """
 
@@ -464,7 +470,12 @@ def simulate(des, rpm, res):
         u0.assign(u1)
         t += dt
 
-
+    # Save force arrays
+    np.save(res_dir + "/lift_force.npy", force_l_array)
+    np.save(res_dir + "/lift_coefficient.npy", lift_coeff_array)
+    np.save(res_dir + "/drag_force.npy", force_d_array)
+    np.save(res_dir + "/drag_coefficient.npy", drag_coeff_array)
+    np.save(res_dir + "/time.npy", time)
 
     # Plot solution
     plt.figure()
@@ -477,14 +488,30 @@ def simulate(des, rpm, res):
 
     # Plot the lift force
     plt.figure()
-    plt.title("Lift Force, " + s + ", Re = " + repr(int(re)))
-    plt.plot(time, force_array)
+    plt.title("Lift Coefficient, " + s + ", Re = " + repr(int(re)))
+    plt.plot(time, lift_coeff_array)
 
-    # Plot the average of force_array
-    lift_avg = np.array([sum(force_array) / len(force_array)]*len(time))
-    plt.plot(time, lift_avg, color='red', label='avg = ' + "{:.3f}".format(lift_avg[0]))
+    # Plot the average of the lift force_array
+    #lift_avg = np.array([sum(lift_coeff_array) / len(lift_coeff_array)]*len(time))
+    #plt.plot(time, lift_avg, color='red', label='avg = ' + "{:.3f}".format(lift_avg[0]))
+    #plt.legend()
+    #plt.savefig(res_dir + "/lift_force" + repr(int(t)) + '.png', dpi=300)
+    # Plot the average of the lift force during the last 10 seconds
+    lift_avg = np.array([sum(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):]) / len(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):])]*len(time))
+    plt.plot(time, lift_avg, color='red', label='avg = ' + "{:.3f}".format(lift_avg[0])) 
     plt.legend()
     plt.savefig(res_dir + "/lift_force" + repr(int(t)) + '.png', dpi=300)
+
+    # Plot the drag force
+    plt.figure()
+    plt.title("Drag Coefficient, " + s + ", Re = " + repr(re))
+    plt.plot(time, drag_coeff_array)
+
+    # Plot the average of force_array_2 during the last 5 seconds
+    drag_avg = np.array([sum(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):]) / len(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):])]*len(time))
+    plt.plot(time, drag_avg, color='red', label='avg = ' + "{:.3f}".format(drag_avg[0])) 
+    plt.legend()
+    plt.savefig(res_dir + "/drag_force" + repr(int(t)) + '.png', dpi=300)
 
     plt.close('all')
 
@@ -494,4 +521,4 @@ def simulate(des, rpm, res):
 args = sys.argv
 print("Run in parallel using GNU Parallel.\n Example: parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120.\n Runs simulation for design 0 and 1 with rpm 40, 80 & 120, total 6 sims")
 print("Starting simulation for", int(args[2]), "rpm")
-simulate(int(args[1]), int(args[2]), 32)
+simulate(int(args[1]), int(args[2]), int(args[3]))
