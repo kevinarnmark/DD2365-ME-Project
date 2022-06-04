@@ -43,7 +43,7 @@ def simulate(des, rpm, res):
 
     print("RE =", repr(re))
 
-    res_dir = "results_ALE_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
+    res_dir = "bc_results_ALE_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
     if (path.isdir(res_dir)):
         rmtree(res_dir)
         mkdir(res_dir)
@@ -53,15 +53,15 @@ def simulate(des, rpm, res):
     # Define subdomains (for boundary conditions)
     class Left(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > rc and x[0] <= xc
+            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] <= xc
 
     class Right(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > rc and x[0] > xc
+            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] > xc
 
     class Objects(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) < rc_domain
+            return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) < pow(0.9*rc_domain,2)
         
     left = Left()
     right = Right()
@@ -245,8 +245,8 @@ def simulate(des, rpm, res):
     bcu_in0 = DirichletBC(V.sub(0), uin, dbc_left)
     bcu_in1 = DirichletBC(V.sub(1), 0.0, dbc_left)
 
-    bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
-    bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
+    #bcu_obj0 = DirichletBC(V.sub(0), 0.0, dbc_objects)
+    #bcu_obj1 = DirichletBC(V.sub(1), 0.0, dbc_objects)
 
     bcu_obj = DirichletBC(V, w_bc, dbc_objects)
 
@@ -260,6 +260,21 @@ def simulate(des, rpm, res):
     # Define measure for boundary integration  
     ds = Measure('ds', domain=mesh, subdomain_data=boundaries)
 
+    # Plot boundary conditions
+    bcu_f = Function(V)
+    bcp_f = Function(Q)
+
+    [bc.apply(bcu_f.vector()) for bc in bcu]
+    plt.figure()
+    plot(bcu_f)
+    plt.savefig(res_dir + '/bcu' + '.png', dpi=300)
+
+    bcp_f.vector()[:] = -1.0
+    [bc.apply(bcp_f.vector()) for bc in bcp]
+    plt.figure()
+    plot(bcp_f)
+    plt.savefig(res_dir + '/bcp' + '.png', dpi=300)
+
     # Define iteration functions
     # (u0,p0) solution from previous time step
     # (u1,p1) linearized solution at present time step  
@@ -267,6 +282,7 @@ def simulate(des, rpm, res):
     u1 = Function(V)
     p0 = Function(Q)
     p1 = Function(Q)
+    
 
     # Set parameters for nonlinear and lienar solvers 
     num_nnlin_iter = 5 
@@ -448,11 +464,11 @@ def simulate(des, rpm, res):
             #plot(psi)
             #plt.savefig(res_dir + '/userexpr_' + repr(t) + '.png', dpi=300)
             #plt.close()
-            """
+            
             plt.figure()
             plot(p1, title="Pressure")
             plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
-
+            """
             plt.figure()
             plot(mesh, title="Mesh")
             plt.savefig(res_dir + "/mesh"  + repr(t) + ".png", dpi=300)
