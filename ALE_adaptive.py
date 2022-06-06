@@ -51,7 +51,6 @@ elif des == 1:
 elif des == 2:
     # Define circle with 4 fins object
     rc_coord = rc / sqrt(2)
-    #obj = Rectangle(Point(-rc_coord/2,-2*rc_coord), Point(rc_coord/2,2*rc_coord))
     obj = Circle(Point(xc,yc), rc, c_res) + Rectangle(Point(-rc_coord/4,-2*rc_coord), Point(rc_coord/4,2*rc_coord)) \
             + Rectangle(Point(-2*rc_coord,-rc_coord/4), Point(2*rc_coord,rc_coord/4))
 elif des == 3:
@@ -66,7 +65,7 @@ print("RE =", repr(re))
 saved_state = False
 ss = None # 0 - time, 1 - plot time, 2 - plot figure time, 3 - checkpoint number
 
-res_dir = "results_ALE_flettner" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
+res_dir = "0_final_results_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
 if (path.isdir(res_dir)):
     saved_state = True
     ss = np.load(res_dir + "/saved_state.npy")
@@ -426,6 +425,7 @@ while t < T + DOLFIN_EPS and not shut_down:
         plt.figure()
         plot(p1, title="Pressure")
         plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
+        plt.close()
 
         plot_time_fig += T/plot_freq_fig
 
