@@ -20,11 +20,15 @@ def handler(signum, frame):
 signal.signal(signal.SIGINT, handler)
 
 args = sys.argv
-print("Starting simulation for design", int(args[1]), "with" ,int(args[2]), "rpm", "with resolution", int(args[3]), "\n")
+print("Starting simulation for design", int(args[1]), "with" ,int(args[2]), \
+     "rpm", "with resolution", int(args[3]), "\n")
 
-print("Run in parallel by using GNU Parallel.\n Example: parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120 ::: 32.\n Runs simulation for design 0 and 1 with rpm 40, 80 & 120 with resolution 32, total 6 sims", "\n")
+print("Run in parallel by using GNU Parallel.\n"
+     +"Example: parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120 ::: 32.\n"
+     +"Runs simulation for design 0 and 1 with rpm 40, 80 & 120 with resolution 32, total 6 sims", "\n")
 
-print("Input Ctrl-c + y to safely exit the simulation, so it can be continued from a checkpoint", "\n")
+print("Input Ctrl-c + y to safely exit the simulation, so it can be continued from a checkpoint", \
+     "\n")
 
 des, rpm, res = int(args[1]), int(args[2]), int(args[3])
 
@@ -51,8 +55,9 @@ elif des == 1:
 elif des == 2:
     # Define circle with 4 fins object
     rc_coord = rc / sqrt(2)
-    obj = Circle(Point(xc,yc), rc, c_res) + Rectangle(Point(-rc_coord/4,-2*rc_coord), Point(rc_coord/4,2*rc_coord)) \
-            + Rectangle(Point(-2*rc_coord,-rc_coord/4), Point(2*rc_coord,rc_coord/4))
+    obj = Circle(Point(xc,yc), rc, c_res) \
+          + Rectangle(Point(-rc_coord/4,-2*rc_coord), Point(rc_coord/4,2*rc_coord)) \
+          + Rectangle(Point(-2*rc_coord,-rc_coord/4), Point(2*rc_coord,rc_coord/4))
 elif des == 3:
     # Define debug object
     rc_coord = rc / sqrt(2)
@@ -65,11 +70,16 @@ print("RE =", repr(re))
 saved_state = False
 ss = None # 0 - time, 1 - plot time, 2 - plot figure time, 3 - checkpoint number
 
-res_dir = "0_final_results_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) + "_" + repr(int(re))
+res_dir = "0_final_results_" + repr(des) + "_" + repr(rpm) + "_" + repr(res) \
+            + "_" + repr(int(re))
 if (path.isdir(res_dir)):
+    # Load data for continuing simulation from checkpoint
+
     saved_state = True
     ss = np.load(res_dir + "/saved_state.npy")
-    force_cp = np.load(res_dir + "/force_checkpoint.npy")
+    force_cp = np.load(res_dir + "/force_checkpoint.npy") 
+    # 0 - lift coefficient array, 1 - lift force array, 2 - drag coefficient array,
+    # 3 - drag force array, 4 - time array
     ss_time = ss[0]
     ss_plt = ss[1]
     ss_plt_f = ss[2]
@@ -88,15 +98,18 @@ else:
 # Define subdomains (for boundary conditions)
 class Left(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] <= xc
+        return on_boundary and pow(x[0]-xc,2)\
+             + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] <= xc
 
 class Right(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] > xc
+        return on_boundary and pow(x[0]-xc,2)\
+             + pow(x[1]-yc,2) > pow(1.1*rc,2) and x[0] > xc
 
 class Objects(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and pow(x[0]-xc,2) + pow(x[1]-yc,2) < pow(0.9*rc_domain,2)
+        return on_boundary and pow(x[0]-xc,2)\
+             + pow(x[1]-yc,2) < pow(0.9*rc_domain,2)
     
 left = Left()
 right = Right()
@@ -117,11 +130,11 @@ for _ in range(0,no_levels):
         cell_marker[cell] = False
         p = cell.midpoint()
         if p.distance(Point(xc, yc)) < rc_refine:
-        #if p[1] <= 0.3*(p[0] - csx) and p[1] >= -0.5*(p[0] + csx): # Does not work when rotating
             cell_marker[cell] = True
     mesh = refine(mesh, cell_marker)
 
-np.save(res_dir + "/num_cells_" + str(mesh.num_cells()) + ".npy", np.array([mesh.num_cells()]))
+np.save(res_dir + "/num_cells_" + str(mesh.num_cells()) + ".npy", \
+     np.array([mesh.num_cells()]))
 
 plt.figure()
 plot(mesh, linewidth=0.5)
@@ -162,18 +175,19 @@ t = 0.0
 rot_vel_rc = rc * rpm * 2 * np.pi / 60
 print("Rotational velocity on rotor:", rot_vel_rc)
 rot_vel_d = rc_domain * rpm * 2 * np.pi / 60 # Velocity at the boundary of the domain
-#rot_vel_ref = rc_refine * rpm * 2 * np.pi / 60 # Velocity at the outer edge of the refined mesh
-#rot_vel_obj = (rc + domain_h_unref) * rpm * 2 * np.pi / 60 # Velocity at the object boundary of the refined mesh
 print("Rotational velocity on domain boundary:", rot_vel_d)
 
-#dt = Constant(min(domain_h_unref / (rot_vel_d + uin), domain_hmin / (rot_vel_ref + uin), obj_hmin / (rot_vel_obj + uin))) # Smallest time-step depending on velocity compared to mesh size
-dt = Constant(mesh.hmin() / (rot_vel_d + uin)) # Smallest possible timestep that could be needed for CFL condition during the first iteration
+# Smallest timestep that could be needed for CFL condition during the first iteration
+dt = Constant(mesh.hmin() / (rot_vel_d + uin)) 
+
 omega = -(rpm * 2 * np.pi * dt) / 60 
 o0 = Constant(cos(omega))
 o1 = Constant(sin(omega))
 
-w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
-w_bc = Expression(('(x[0]*o0-x[1]*o1 - x[0]) / dt','(x[0]*o1+x[1]*o0 - x[1]) / dt'), rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
+w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), \
+                 rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
+w_bc = Expression(('(x[0]*o0-x[1]*o1 - x[0]) / dt','(x[0]*o1+x[1]*o0 - x[1]) / dt'), \
+                 rc=rc, dt=dt, o0=o0, o1=o1, xc=xc, yc=yc, element = V.ufl_element())
 
 
 # Defining boundary conditions:
@@ -235,8 +249,10 @@ um = 0.5*(u + u0)
 um1 = 0.5*(u1 + u0)
 
 # Momentum variational equation on residual form
-Fu = inner((u - u0)/dt + grad(um)*(um1-w/dt), v)*dx - p1*div(v)*dx + nu*inner(grad(um), grad(v))*dx \
-    + d1*inner((u - u0)/dt + grad(um)*(um1-w/dt) + grad(p1), grad(v)*(um1-w/dt))*dx + d2*div(um)*div(v)*dx 
+Fu = inner((u - u0)/dt + grad(um)*(um1-w/dt), v)*dx - p1*div(v)*dx \
+    + nu*inner(grad(um), grad(v))*dx + d1*inner((u - u0)/dt \
+         + grad(um)*(um1-w/dt) + grad(p1), grad(v)*(um1-w/dt))*dx \
+              + d2*div(um)*div(v)*dx 
 au = lhs(Fu)
 Lu = rhs(Fu)
 
@@ -279,8 +295,10 @@ plt.figure()
 plot(psi_l)
 plt.savefig(res_dir + '/psi_expression' + '.png', dpi=300)
 
-Force_l = inner((u1 - u0)/dt + grad(um1)*um1, psi_l)*dx - p1*div(psi_l)*dx + nu*inner(grad(um1), grad(psi_l))*dx
-Force_d = inner((u1 - u0)/dt + grad(um1)*um1, psi_d)*dx - p1*div(psi_d)*dx + nu*inner(grad(um1), grad(psi_d))*dx
+Force_l = inner((u1 - u0)/dt + grad(um1)*um1, psi_l)*dx - p1*div(psi_l)*dx \
+         + nu*inner(grad(um1), grad(psi_l))*dx
+Force_d = inner((u1 - u0)/dt + grad(um1)*um1, psi_d)*dx - p1*div(psi_d)*dx \
+         + nu*inner(grad(um1), grad(psi_d))*dx
 
 # Force normalization
 D = 2*rc
@@ -332,7 +350,8 @@ plot_freq_fig = T*0.5
 # Assign data from saved state
 if (saved_state):
     ss_rot = ((ss_time) / dt((5,7))) * omega((5,7))
-    ss_w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), rc=rc, o0=cos(ss_rot), o1=sin(ss_rot), xc=xc, yc=yc, element = V.ufl_element())
+    ss_w = Expression(('x[0]*o0-x[1]*o1 - x[0]','x[0]*o1+x[1]*o0 - x[1]'), \
+         rc=rc, o0=cos(ss_rot), o1=sin(ss_rot), xc=xc, yc=yc, element = V.ufl_element())
     ALE.move(mesh, ss_w)
     ss_u = Function(V, ss_u1)
     ss_p = Function(Q, ss_p1)
@@ -411,8 +430,11 @@ while t < T + DOLFIN_EPS and not shut_down:
 
         plot_time += T/plot_freq
         # Save for use as checkpoint
-        np.save(res_dir + "/saved_state.npy", np.array([t, plot_time, plot_time_fig, ss_nr]))
-        np.save(res_dir + "/force_checkpoint.npy", np.array([lift_coeff_array, force_l_array, drag_coeff_array, force_d_array, time]))
+        np.save(res_dir + "/saved_state.npy", \
+             np.array([t, plot_time, plot_time_fig, ss_nr]))
+        np.save(res_dir + "/force_checkpoint.npy", \
+             np.array([lift_coeff_array, force_l_array, \
+                        drag_coeff_array, force_d_array, time]))
 
     if t > plot_time_fig:     
         
@@ -422,10 +444,10 @@ while t < T + DOLFIN_EPS and not shut_down:
         plt.savefig(res_dir + "/u" + repr(t) + ".png", dpi=300)
         plt.close()
             
-        #plt.figure()
-        #plot(p1, title="Pressure")
-        #plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
-        #plt.close()
+        plt.figure()
+        plot(p1, title="Pressure")
+        plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
+        plt.close()
 
         plot_time_fig += T/plot_freq_fig
 
@@ -464,7 +486,8 @@ else:
     plt.plot(time, lift_coeff_array)
 
     # Plot the average of the lift force during the last 10 seconds
-    lift_avg = np.array([sum(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):]) / len(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):])]*len(time))
+    lift_avg = np.array([sum(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):]) \
+         / len(lift_coeff_array[int(len(lift_coeff_array) * (T-10)/T):])]*len(time))
     plt.plot(time, lift_avg, color='red', label='avg = ' + "{:.3f}".format(lift_avg[0])) 
     plt.legend()
     plt.savefig(res_dir + "/lift_force" + repr(int(t)) + '.png', dpi=300)
@@ -475,11 +498,13 @@ else:
     plt.plot(time, drag_coeff_array)
 
     # Plot the average of force_array_2 during the last 5 seconds
-    drag_avg = np.array([sum(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):]) / len(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):])]*len(time))
+    drag_avg = np.array([sum(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):]) \
+         / len(drag_coeff_array[int(len(drag_coeff_array) * (T-5)/T):])]*len(time))
     plt.plot(time, drag_avg, color='red', label='avg = ' + "{:.3f}".format(drag_avg[0])) 
     plt.legend()
     plt.savefig(res_dir + "/drag_force" + repr(int(t)) + '.png', dpi=300)
 
     plt.close('all')
 
-print("Adaptive Simulation Time:", TIME.time() - start_time, "Using args:", des, rpm, res)
+print("Adaptive Simulation Time:", TIME.time() - start_time, \
+         "Using args:", des, rpm, res)

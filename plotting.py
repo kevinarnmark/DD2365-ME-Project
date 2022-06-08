@@ -3,7 +3,9 @@ from matplotlib import pyplot as plt
 
 l_c = "lift_coefficient.npy" #"lift_force.npy"
 t_s = "time.npy"
-res_dir = "plots"
+res_dir = "final_plots"
+
+exp_lift_coeff = [2.4, 5.5, 8.5, 10.75, 12.2]
 
 l = []
 t = []
@@ -23,8 +25,8 @@ t_r = []
 #l.append(np.load("64_results_ALE_0_48_2805049.0883590463/"+l_c))
 #t.append(np.load("64_results_ALE_0_48_2805049.0883590463/"+t_s))
 
-for i in range(16, 88+1, 8):
-    s = "results_ALE_0_48_" + str(i) +"_2805049/"
+for i in range(16, 64+1, 8):
+    s = "0_final_results_0_239_" + str(i) +"_2805049/"
     l.append(np.load(s+l_c))
     t.append(np.load(s+t_s))
 
@@ -32,9 +34,15 @@ for j in [0, 1, 2]:
     l_r.append([])
     t_r.append([])
     for i in [48, 96, 143, 191, 239]:
-        s = "results_ALE_" + str(j) + "_" + str(i) + "_32_2805049/"
-        l_r[j].append(np.load(s+l_c))
-        t_r[j].append(np.load(s+t_s))
+        s = "0_final_results_" + str(j) + "_" + str(i) + "_60_2805049/"
+        
+        if j == 0 and i == 239: s = "0_final_results_" + str(j) + "_" + str(i) + "_64_2805049/"
+        if i > 144: 
+            l_r[j].append(np.load(s+"force_checkpoint.npy")[0])
+            t_r[j].append(np.load(s+"force_checkpoint.npy")[4])
+        else:
+            l_r[j].append(np.load(s+l_c))
+            t_r[j].append(np.load(s+t_s))
 
 lift_2 = []
 lift_2_val = []
@@ -60,19 +68,19 @@ for j in range(len(l_r)):
     if j == 0: 
         c = "blue"
         m = "o"
-        l = "circle"
+        la = "circle"
     elif j == 1: 
         c = "orange"
         m = "+"
-        l = "square"
+        la = "square"
     elif j == 2: 
         c = "green"
         m = "x"
-        l = "circle +"
+        la = "circle +"
     #plt.title("Lift Coefficient, Resolution")
     s_r = np.array([1, 2, 3, 4, 5])
     #print(s_r, lift_2_val)
-    plt.plot(s_r, lift_2_val[j], linewidth=1, label=l, color=c)
+    plt.plot(s_r, lift_2_val[j], linewidth=1, label=la, color=c)
     plt.plot(s_r, lift_2_val[j], m, linewidth=1, color=c) # Add markers
     plt.legend()
 
@@ -80,8 +88,19 @@ plt.xlabel("Spin Ratio")
 plt.ylabel("Lift Coefficient")
 plt.savefig(res_dir + "/lift_coeff_rpm" + '.png', dpi=300)
 
+plt.figure()
+plt.plot(s_r, lift_2_val[0], linewidth=1, label="CFD", color="blue")
+plt.plot(s_r, lift_2_val[0], "o", linewidth=1, color="blue") # Add markers
+plt.legend()
+plt.plot(s_r, exp_lift_coeff, linewidth=1, label="Experimental data", color="orange")
+plt.plot(s_r, exp_lift_coeff, "+", linewidth=1, color="orange") # Add markers
+plt.legend()
 
-"""
+plt.xlabel("Spin Ratio")
+plt.ylabel("Lift Coefficient")
+plt.savefig(res_dir + "/lift_coeff_exp_rpm" + '.png', dpi=300)
+
+
 lift_avg = []
 lift_avg_val = []
 for i in range(len(l)):
@@ -107,15 +126,15 @@ for i in range(len(l)):
 
 plt.figure()
 #plt.title("Lift Coefficient, Resolution")
-res = np.array([16+i*8 for i in range(0,10)])
+res = np.array([16+i*8 for i in range(0,7)])
 print(res, lift_avg_val)
 plt.plot(res, lift_avg_val, linewidth=1, color="blue")
 plt.plot(res, lift_avg_val, "+", linewidth=1, color="blue") # Add markers
 plt.xlabel("Resolution")
 plt.ylabel("Lift Coefficient")
 plt.savefig(res_dir + "/lift_coeff_res" + '.png', dpi=300)
-"""
 
+"""
 theo_lift = []
 spin_ratio = []
 for w in range(0, 239):
@@ -130,3 +149,4 @@ plt.figure()
 plt.title("Theoretical Lift Force")
 plt.plot(spin_ratio, theo_lift, linewidth=1)
 plt.savefig(res_dir + "/theoretical_lift_coeff" + '.png', dpi=300)
+"""
