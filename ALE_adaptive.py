@@ -22,7 +22,7 @@ signal.signal(signal.SIGINT, handler)
 args = sys.argv
 print("Starting simulation for design", int(args[1]), "with" ,int(args[2]), "rpm", "with resolution", int(args[3]), "\n")
 
-print("Run in parallel using GNU Parallel.\n Example: parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120.\n Runs simulation for design 0 and 1 with rpm 40, 80 & 120, total 6 sims", "\n")
+print("Run in parallel by using GNU Parallel.\n Example: parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120 ::: 32.\n Runs simulation for design 0 and 1 with rpm 40, 80 & 120 with resolution 32, total 6 sims", "\n")
 
 print("Input Ctrl-c + y to safely exit the simulation, so it can be continued from a checkpoint", "\n")
 
@@ -422,10 +422,10 @@ while t < T + DOLFIN_EPS and not shut_down:
         plt.savefig(res_dir + "/u" + repr(t) + ".png", dpi=300)
         plt.close()
             
-        plt.figure()
-        plot(p1, title="Pressure")
-        plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
-        plt.close()
+        #plt.figure()
+        #plot(p1, title="Pressure")
+        #plt.savefig(res_dir + "/p" + repr(t) + ".png", dpi=300)
+        #plt.close()
 
         plot_time_fig += T/plot_freq_fig
 
