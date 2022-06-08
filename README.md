@@ -10,12 +10,12 @@ cd shared
 
 Run either a single simulation or several in parallel using:
 
-Single using design 0 and rpm = 40:
+Single using design 0 and rpm = 40 with resolution = 32:
 ```
-python3 ALE_Magnus.py 0 40
+python3 ALE_Magnus.py 0 40 32
 ```
 
-In parallel using design 0 & 1 and rpm = 40, 80 & 120:
+In parallel using design 0 & 1 and rpm = 40, 80 & 120 with resolution 32:
 ```
-parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120
+parallel python3 ALE_Magnus.py ::: 0 1 ::: 40 80 120 ::: 32
 ```

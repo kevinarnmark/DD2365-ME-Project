@@ -13,18 +13,6 @@ t = []
 l_r = []
 t_r = []
 
-#l.append(np.load("16_results_ALE_0_48_2805049.0883590463/"+l_c))
-#t.append(np.load("16_results_ALE_0_48_2805049.0883590463/"+t_s))
-
-#l.append(np.load("32_results_ALE_0_48_2805049.0883590463/"+l_c))
-#t.append(np.load("32_results_ALE_0_48_2805049.0883590463/"+t_s))
-
-#l.append(np.load("48_results_ALE_0_48_2805049.0883590463/"+l_c))
-#t.append(np.load("48_results_ALE_0_48_2805049.0883590463/"+t_s))
-
-#l.append(np.load("64_results_ALE_0_48_2805049.0883590463/"+l_c))
-#t.append(np.load("64_results_ALE_0_48_2805049.0883590463/"+t_s))
-
 for i in range(16, 64+1, 8):
     s = "0_final_results_0_239_" + str(i) +"_2805049/"
     l.append(np.load(s+l_c))
