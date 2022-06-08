@@ -5,6 +5,8 @@ l_c = "lift_coefficient.npy" #"lift_force.npy"
 t_s = "time.npy"
 res_dir = "plots"
 
+exp_lift_coeff = [2.4, 5.5, 8.5, 10.75, 12.2]
+
 l = []
 t = []
 
